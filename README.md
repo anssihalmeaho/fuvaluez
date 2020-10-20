@@ -7,7 +7,7 @@ ValueZ supports concurrent access to data and guarantees consistency via transac
 ValueZ is used in context of one process (not to be shared with several processes).
 
 ## Concepts
-Database (db) and Collection (col) are main concepts in valuez.
+Database (db) and Collection (col) are main concepts in ValueZ.
 
 ### Database (db)
 Database (db) contains many collections. Persistent storage works in scope of database.
