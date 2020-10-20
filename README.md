@@ -102,6 +102,27 @@ Option 1. is preferred but plugin modules can be used only in FreeBSD/Linux/Mac,
 Here's more information about [FunL plugin modules](https://github.com/anssihalmeaho/funl/wiki/plugin-modules).
 So in Windows option 2. remains way to use ValueZ.
 
+### ValueZ installed as plugin module
+To create ValueZ as shared object librarys (__valuez.so__) do following steps:
+
+1. `git clone https://github.com/anssihalmeaho/valuezplugin.git`
+2. `cd valuezplugin/`
+3. `go get github.com/anssihalmeaho/fuvaluez`
+4. `make` -> produces __valuez.so__
+5. set FUNLPATH environment variable so that __valuez.so__ is found
+
+See [FunL plugin guide for more information](https://github.com/anssihalmeaho/funl/wiki/plugin-modules)
+
+**Note.** Go modules implementation can be very strict about module/package versions so it may be required
+that after cloning FunL repository from Github (`git clone https://github.com/anssihalmeaho/funl.git`)
+all other files and folders removed but following ones:
+
+* __main.go__
+* __Makefile__
+* __go.mod__
+
+And then build __funla__ executable by `make`.
+
 ### ValueZ installed as std-module
 See here how [built-in modules can be extended with own ones](https://github.com/anssihalmeaho/funl/wiki/External-Modules)
 Steps are:
