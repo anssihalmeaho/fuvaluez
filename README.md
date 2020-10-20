@@ -91,3 +91,104 @@ Closes db. Waits ongoing operations to finish before closing.
 ```
 valuez.close(<col:opaque>) -> list(<ok:bool> <error:string> <db:opaque>)
 ```
+
+## Install
+Thre are two ways to take ValueZ into use:
+
+1. As plugin module
+2. As std module (**locally** add to standard library modules)
+
+Option 1. is preferred but plugin modules can be used only in FreeBSD/Linux/Mac, not in Windows.
+Here's more information about [FunL plugin modules](https://github.com/anssihalmeaho/funl/wiki/plugin-modules).
+So in Windows option 2. remains way to use ValueZ.
+
+### ValueZ installed as std-module
+See here how [built-in modules can be extended with own ones](https://github.com/anssihalmeaho/funl/wiki/External-Modules)
+Steps are:
+
+1. clone FunL repository from Github
+2. add own Go module into **/std** directory (named for example like __valuezm.go__)
+3. `go get github.com/anssihalmeaho/fuvaluez`
+4. make -> produces __funla__ executable where ValueZ is buil-in module (with name __valuez__)
+
+Here's how built-in module (__valuezm.go__) should be:
+
+```Go
+package std
+
+import (
+	"github.com/anssihalmeaho/funl/funl"
+	"github.com/anssihalmeaho/fuvaluez/fuvaluez"
+)
+
+func init() {
+	funl.AddExtensionInitializer(initMyExt)
+}
+
+func convGetter(inGetter func(string) fuvaluez.FZProc) func(string) stdFuncType {
+	return func(name string) stdFuncType {
+		return stdFuncType(inGetter(name))
+	}
+}
+
+func initMyExt() (err error) {
+	stdModuleName := "valuez"
+	topFrame := &funl.Frame{
+		Syms:     funl.NewSymt(),
+		OtherNS:  make(map[funl.SymID]funl.ImportInfo),
+		Imported: make(map[funl.SymID]*funl.Frame),
+	}
+	stdFuncs := []stdFuncInfo{
+		{
+			Name:   "open",
+			Getter: convGetter(fuvaluez.GetVZOpen),
+		},
+		{
+			Name:   "new-col",
+			Getter: convGetter(fuvaluez.GetVZNewCol),
+		},
+		{
+			Name:   "get-col",
+			Getter: convGetter(fuvaluez.GetVZGetCol),
+		},
+		{
+			Name:   "get-col-names",
+			Getter: convGetter(fuvaluez.GetVZGetColNames),
+		},
+		{
+			Name:   "put-value",
+			Getter: convGetter(fuvaluez.GetVZPutValue),
+		},
+		{
+			Name:   "get-values",
+			Getter: convGetter(fuvaluez.GetVZGetValues),
+		},
+		{
+			Name:   "take-values",
+			Getter: convGetter(fuvaluez.GetVZTakeValues),
+		},
+		{
+			Name:   "update",
+			Getter: convGetter(fuvaluez.GetVZUpdate),
+		},
+		{
+			Name:   "trans",
+			Getter: convGetter(fuvaluez.GetVZTrans),
+		},
+		{
+			Name:   "view",
+			Getter: convGetter(fuvaluez.GetVZView),
+		},
+		{
+			Name:   "del-col",
+			Getter: convGetter(fuvaluez.GetVZDelCol),
+		},
+		{
+			Name:   "close",
+			Getter: convGetter(fuvaluez.GetVZClose),
+		},
+	}
+	err = setSTDFunctions(topFrame, stdModuleName, stdFuncs)
+	return
+}
+```
