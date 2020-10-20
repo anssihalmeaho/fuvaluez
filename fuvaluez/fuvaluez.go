@@ -1526,7 +1526,7 @@ func GetVZGetColNames(name string) FZProc {
 					Kind: funl.StringValue,
 					Data: errStr,
 				},
-				funl.Value{Kind: funl.OpaqueValue, Data: &OpaqueCol{}},
+				funl.MakeListOfValues(frame, []funl.Value{}),
 			}
 			retVal = funl.MakeListOfValues(frame, values)
 			return
@@ -1537,7 +1537,18 @@ func GetVZGetColNames(name string) FZProc {
 			colNameVal := funl.Value{Kind: funl.StringValue, Data: colName}
 			colNameValues = append(colNameValues, colNameVal)
 		}
-		retVal = funl.MakeListOfValues(frame, colNameValues)
+		values = []funl.Value{
+			{
+				Kind: funl.BoolValue,
+				Data: true,
+			},
+			{
+				Kind: funl.StringValue,
+				Data: "",
+			},
+			funl.MakeListOfValues(frame, colNameValues),
+		}
+		retVal = funl.MakeListOfValues(frame, values)
 		return
 	}
 }
