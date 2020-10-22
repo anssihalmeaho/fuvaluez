@@ -1,5 +1,6 @@
 # ValueZ
-ValueZ is value store. Values are [FunL programming language](https://github.com/anssihalmeaho/funl) values.
+ValueZ is value store to be used from code written in [FunL programming language](https://github.com/anssihalmeaho/funl). 
+Values are [FunL type of values](https://github.com/anssihalmeaho/funl/wiki/Syntax-and-concepts).
 Values are kept in memory (RAM) and accessed primarily from there but are also stored to persistent storage (disk). ValueZ works more efficiently if client is more read-intensive than write-intensive.
 
 ValueZ supports concurrent access to data and guarantees consistency via transactions and views (snapshots). Also collection operations modify values in collection so that consistency remains inside collection.
@@ -92,8 +93,190 @@ Closes db. Waits ongoing operations to finish before closing.
 valuez.close(<col:opaque>) -> list(<ok:bool> <error:string> <db:opaque>)
 ```
 
+### Reading and writing values
+Procedures for reading and writing from/to collection can be used in two ways:
+
+1. Outside of transaction or view
+2. Inside transaction or view
+
+If operation is done outside of transaction/view then operation is directly applied to collection.
+If operation is done in context of transaction then changes are applied to transaction, not
+directly to collection (after commit changes are applied to collection). Similarly in context of view
+operation (only read operations allowed) is applied to snapshot of collection, not to latest version
+of collection.
+
+In case of transaction and view (opaque) transaction value is given as argument to operation instead of 
+(opaque) collection value.
+
+#### put-value
+Writes value to collection.
+
+```
+valuez.put-value(<col/txn:opaque> <value>) -> list(<ok:bool> <error:string>)
+```
+
+#### get-values
+Reads values from collection which satisfy filter condition given as function
+arument (2nd argument). Function is called for each value in collection.
+Value is given as argument to function, if function returns **true** value
+is included in result list, if it returns **false** then it's not included.
+
+```
+valuez.get-values(<col/txn:opaque> <func>) -> list(<value>, ...)
+```
+
+Example: Get all values from collection
+
+```
+ns main
+
+import valuez
+import stddbc
+
+main = proc()
+	open-ok open-err db = call(valuez.open 'esimdb'):
+	_ = call(stddbc.assert open-ok open-err)
+
+	col-ok col-err col = call(valuez.new-col db 'esim-col'):
+	_ = call(stddbc.assert col-ok col-err)
+
+	_ = call(valuez.put-value col 'Pizza')
+	_ = call(valuez.put-value col 'Burger')
+	_ = call(valuez.put-value col 'Hot Dog')
+	
+	items = call(valuez.get-values col func(x) true end)
+	
+	_ = call(valuez.close db)
+	items
+end
+
+endns
+
+-> list('Pizza', 'Burger', 'Hot Dog')
+```
+
+Example: Get values which start with 'P'
+
+```
+ns main
+
+import valuez
+import stddbc
+
+main = proc()
+	import stdstr
+
+	open-ok open-err db = call(valuez.open 'esimdb'):
+	_ = call(stddbc.assert open-ok open-err)
+
+	col-ok col-err col = call(valuez.new-col db 'esim-col'):
+	_ = call(stddbc.assert col-ok col-err)
+
+	_ = call(valuez.put-value col 'Pizza')
+	_ = call(valuez.put-value col 'Burger')
+	_ = call(valuez.put-value col 'Hot Dog')
+	
+	items = call(valuez.get-values col func(x) call(stdstr.startswith x 'P') end)
+	
+	_ = call(valuez.close db)
+	items
+end
+
+endns
+
+-> list('Pizza')
+```
+
+#### take-values
+Takes values from collection which satisfy filter condition given as function
+arument (2nd argument). Function is called for each value in collection.
+Value is given as argument to function, if function returns **true** value
+is included in result list and removed from collection, if it returns **false** then 
+it's not included in result list and it remains in collection.
+
+```
+valuez.take-values(<col/txn:opaque> <func>) -> list(<value>, ...)
+```
+
+Example: Take 'Burger' value from collection
+
+```
+ns main
+
+import valuez
+import stddbc
+
+main = proc()
+	open-ok open-err db = call(valuez.open 'esimdb'):
+	_ = call(stddbc.assert open-ok open-err)
+
+	col-ok col-err col = call(valuez.new-col db 'esim-col'):
+	_ = call(stddbc.assert col-ok col-err)
+
+	_ = call(valuez.put-value col 'Pizza')
+	_ = call(valuez.put-value col 'Burger')
+	_ = call(valuez.put-value col 'Hot Dog')
+	
+	taken-items = call(valuez.take-values col func(x) eq(x 'Burger') end)
+	left-items = call(valuez.get-values col func(x) true end)
+	
+	_ = call(valuez.close db)
+	sprintf('items taken: %v, items left: %v' taken-items left-items)
+end
+
+endns
+
+-> 'items taken: list('Burger'), items left: list('Pizza', 'Hot Dog')'
+```
+
+#### update
+Applies function given as argument to each value in collection and if function
+returns list in which first item is **true** then value is replaced in collection with value given as
+second item in list. If first item in returned list is **false** then value remains same
+in collection.
+
+```
+valuez.update(<col/txn:opaque> <func>) -> <bool>
+```
+
+Return value is true if any value in collection was updated and changes were
+successfully written to persistent storage.
+
+Example: Change all values (strings) to lowercase strings
+
+```
+ns main
+
+import valuez
+import stddbc
+
+main = proc()
+	open-ok open-err db = call(valuez.open 'esimdb'):
+	_ = call(stddbc.assert open-ok open-err)
+
+	col-ok col-err col = call(valuez.new-col db 'esim-col'):
+	_ = call(stddbc.assert col-ok col-err)
+
+	_ = call(valuez.put-value col 'Pizza')
+	_ = call(valuez.put-value col 'Burger')
+	_ = call(valuez.put-value col 'Hot Dog')
+
+	import stdstr
+	_ = call(valuez.update col func(x) list(true call(stdstr.lowercase x)) end)
+	
+	items = call(valuez.get-values col func(x) true end)
+	
+	_ = call(valuez.close db)
+	items
+end
+
+endns
+
+-> list('pizza', 'burger', 'hot dog')
+```
+
 ## Install
-Thre are two ways to take ValueZ into use:
+There are two ways to take ValueZ into use:
 
 1. As plugin module
 2. As std module (**locally** add to standard library modules)
@@ -103,6 +286,7 @@ Here's more information about [FunL plugin modules](https://github.com/anssihalm
 So in Windows option 2. remains way to use ValueZ.
 
 ### ValueZ installed as plugin module
+There is own Github repository for [ValueZ plugin building](https://github.com/anssihalmeaho/valuezplugin).
 To create ValueZ as shared object librarys (__valuez.so__) do following steps:
 
 1. `git clone https://github.com/anssihalmeaho/valuezplugin.git`
@@ -127,7 +311,7 @@ And then build __funla__ executable by `make`.
 See here how [built-in modules can be extended with own ones](https://github.com/anssihalmeaho/funl/wiki/External-Modules)
 Steps are:
 
-1. clone FunL repository from Github
+1. clone FunL repository from Github: `git clone https://github.com/anssihalmeaho/funl.git`
 2. add own Go module into **/std** directory (named for example like __valuezm.go__)
 3. `go get github.com/anssihalmeaho/fuvaluez`
 4. make -> produces __funla__ executable where ValueZ is buil-in module (with name __valuez__)
