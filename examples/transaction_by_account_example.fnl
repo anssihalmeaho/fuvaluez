@@ -51,7 +51,7 @@ main = proc()
 	_ = print('orinally accounts are: ' call(valuez.get-values col func(x) true end) '\n')
 
 	_ = call(valuez.trans col example-transaction)
-		items = call(valuez.get-values col func(x) true end)
+	items = call(valuez.get-values col func(x) true end)
 
 	_ = call(valuez.close db)
 	sprintf('resulting accounts are: %v' items)
