@@ -53,6 +53,7 @@ Database (db) and collection (col) are represented as [opaque FunL types](https:
 
 #### open
 Opens existing database or if it does not exist creates new database.
+Database file is created with name given as argument (if not existing already).
 
 ```
 valuez.open(<db-name:string>) -> list(<ok:bool> <error:string> <db:opaque>)
@@ -108,6 +109,8 @@ of collection.
 In case of transaction and view (opaque) transaction value is given as argument to operation instead of 
 (opaque) collection value.
 
+**Note:** procedures (__proc__) can be given as arguments instead of functions also in reading and writing operations.
+
 #### put-value
 Writes value to collection.
 
@@ -134,10 +137,10 @@ import valuez
 import stddbc
 
 main = proc()
-	open-ok open-err db = call(valuez.open 'esimdb'):
+	open-ok open-err db = call(valuez.open 'dbexample'):
 	_ = call(stddbc.assert open-ok open-err)
 
-	col-ok col-err col = call(valuez.new-col db 'esim-col'):
+	col-ok col-err col = call(valuez.new-col db 'examplecol'):
 	_ = call(stddbc.assert col-ok col-err)
 
 	_ = call(valuez.put-value col 'Pizza')
@@ -166,10 +169,10 @@ import stddbc
 main = proc()
 	import stdstr
 
-	open-ok open-err db = call(valuez.open 'esimdb'):
+	open-ok open-err db = call(valuez.open 'dbexample'):
 	_ = call(stddbc.assert open-ok open-err)
 
-	col-ok col-err col = call(valuez.new-col db 'esim-col'):
+	col-ok col-err col = call(valuez.new-col db 'examplecol'):
 	_ = call(stddbc.assert col-ok col-err)
 
 	_ = call(valuez.put-value col 'Pizza')
@@ -207,10 +210,10 @@ import valuez
 import stddbc
 
 main = proc()
-	open-ok open-err db = call(valuez.open 'esimdb'):
+	open-ok open-err db = call(valuez.open 'dbexample'):
 	_ = call(stddbc.assert open-ok open-err)
 
-	col-ok col-err col = call(valuez.new-col db 'esim-col'):
+	col-ok col-err col = call(valuez.new-col db 'examplecol'):
 	_ = call(stddbc.assert col-ok col-err)
 
 	_ = call(valuez.put-value col 'Pizza')
@@ -251,10 +254,10 @@ import valuez
 import stddbc
 
 main = proc()
-	open-ok open-err db = call(valuez.open 'esimdb'):
+	open-ok open-err db = call(valuez.open 'dbexample'):
 	_ = call(stddbc.assert open-ok open-err)
 
-	col-ok col-err col = call(valuez.new-col db 'esim-col'):
+	col-ok col-err col = call(valuez.new-col db 'examplecol'):
 	_ = call(stddbc.assert col-ok col-err)
 
 	_ = call(valuez.put-value col 'Pizza')
@@ -273,6 +276,245 @@ end
 endns
 
 -> list('pizza', 'burger', 'hot dog')
+```
+
+### Transactions and Views
+Transactions and Views are implemented so that client defines procedure which is called
+from ValueZ with (opaque) transaction/view value. Inside that procedure using that
+transaction/view value for read/write operations consistent view is maintained.
+
+#### trans
+Executes transaction for given collection, transaction implementation is given as
+procedure in 2nd argument.
+
+```
+valuez.trans(<col:opaque> <procedure>) -> bool
+```
+
+Return value is **true** if changes were committed, **false** if not.
+
+Procedure given as argument is following kind:
+
+```
+<proc>(<txn:opaque>) -> <commit/cancel:bool>
+```
+
+Example: Atomic transaction from one account to other => **Changes Committed**
+
+```
+ns main
+
+import valuez
+import stddbc
+
+example-transaction = proc(txn)
+	# move 250 euros from John to Jack in consistent way
+	transfer-amount = 250
+	
+	john-old = head(call(valuez.take-values txn
+		func(x)
+			eq(get(x 'name') 'John')
+		end
+	))
+	john-new = map(
+		'name'  get(john-old 'name')
+		'saldo' minus(get(john-old 'saldo') transfer-amount)
+	)
+	jack-old = head(call(valuez.take-values txn
+		func(x)
+			eq(get(x 'name') 'Jack')
+		end
+	))
+	jack-new = map(
+		'name'  get(jack-old 'name')
+		'saldo' plus(get(jack-old 'saldo') transfer-amount)
+	)
+
+	_ = call(valuez.put-value txn john-new)
+	_ = call(valuez.put-value txn jack-new)
+
+	items = call(valuez.get-values txn func(x) true end)
+	_ = print('From transaction accounts are: ' items '\n')
+
+	true # changes are committed
+end
+
+main = proc()
+	open-ok open-err db = call(valuez.open 'dbexample'):
+	_ = call(stddbc.assert open-ok open-err)
+
+	col-ok col-err col = call(valuez.new-col db 'accounts'):
+	_ = call(stddbc.assert col-ok col-err)
+
+	# saldos for each person
+	_ = call(valuez.put-value col map('name' 'John' 'saldo' 3500))
+	_ = call(valuez.put-value col map('name' 'Jack' 'saldo' 1000))
+	_ = call(valuez.put-value col map('name' 'Steve' 'saldo' 500))
+	_ = print('orinally accounts are: ' call(valuez.get-values col func(x) true end) '\n')
+
+	_ = call(valuez.trans col example-transaction)
+		items = call(valuez.get-values col func(x) true end)
+	
+	_ = call(valuez.close db)
+	sprintf('resulting accounts are: %v' items)
+end
+
+endns
+
+->
+orinally accounts are: list(map('name' : 'John', 'saldo' : 3500), map('name' : 'Jack', 'saldo' : 1000), map('name' : 'Steve', 'saldo' : 500))
+
+From transaction accounts are: list(map('name' : 'Steve', 'saldo' : 500), map('name' : 'John', 'saldo' : 3250), map('name' : 'Jack', 'saldo' : 1250))
+
+'resulting accounts are: list(map('name' : 'Jack', 'saldo' : 1250), map('name' : 'John', 'saldo' : 3250), map('name' : 'Steve', 'saldo' : 500))'
+```
+
+Example: Atomic transaction from one account to other => **Changes Cancelled**
+
+```
+ns main
+
+import valuez
+import stddbc
+
+example-transaction = proc(txn)
+	# move 250 euros from John to Jack in consistent way
+	transfer-amount = 250
+	
+	john-old = head(call(valuez.take-values txn
+		func(x)
+			eq(get(x 'name') 'John')
+		end
+	))
+	john-new = map(
+		'name'  get(john-old 'name')
+		'saldo' minus(get(john-old 'saldo') transfer-amount)
+	)
+	jack-old = head(call(valuez.take-values txn
+		func(x)
+			eq(get(x 'name') 'Jack')
+		end
+	))
+	jack-new = map(
+		'name'  get(jack-old 'name')
+		'saldo' plus(get(jack-old 'saldo') transfer-amount)
+	)
+
+	_ = call(valuez.put-value txn john-new)
+	_ = call(valuez.put-value txn jack-new)
+
+	items = call(valuez.get-values txn func(x) true end)
+	_ = print('From transaction accounts are: ' items '\n')
+
+	false # changes are not committed
+end
+
+main = proc()
+	open-ok open-err db = call(valuez.open 'dbexample'):
+	_ = call(stddbc.assert open-ok open-err)
+
+	col-ok col-err col = call(valuez.new-col db 'accounts'):
+	_ = call(stddbc.assert col-ok col-err)
+
+	# saldos for each person
+	_ = call(valuez.put-value col map('name' 'John' 'saldo' 3500))
+	_ = call(valuez.put-value col map('name' 'Jack' 'saldo' 1000))
+	_ = call(valuez.put-value col map('name' 'Steve' 'saldo' 500))
+	_ = print('orinally accounts are: ' call(valuez.get-values col func(x) true end) '\n')
+
+	_ = call(valuez.trans col example-transaction)
+		items = call(valuez.get-values col func(x) true end)
+	
+	_ = call(valuez.close db)
+	sprintf('resulting accounts are: %v' items)
+end
+
+endns
+
+->
+orinally accounts are: list(map('name' : 'John', 'saldo' : 3500), map('name' : 'Jack', 'saldo' : 1000), map('name' : 'Steve', 'saldo' : 500))
+
+From transaction accounts are: list(map('name' : 'Steve', 'saldo' : 500), map('name' : 'Jack', 'saldo' : 1250), map('name' : 'John', 'saldo' : 3250))
+
+'resulting accounts are: list(map('name' : 'John', 'saldo' : 3500), map('name' : 'Jack', 'saldo' : 1000), map('name' : 'Steve', 'saldo' : 500))'
+```
+
+#### view
+Executes View for given collection, View implementation is given as
+procedure in 2nd argument. View sees consistent snapshot of collection.
+
+```
+valuez.view(<col:opaque> <procedure>) -> <value>
+```
+
+Return value is return value returned from procedure given as argument.
+
+Procedure given as argument is following kind:
+
+```
+<proc>(<txn:opaque>) -> <value>
+```
+
+Example: Showing how view seems same snapshot alhtough collection is already updated (synchronized via channels to demonstrate timeline)
+
+```
+ns main
+
+import valuez
+import stddbc
+
+run-viewer = proc(ch1 ch2 ch3 col)
+	viewer = proc(txn)
+		_ = print('In view')
+		_ = send(ch1 'ready')
+		_ = recv(ch2)
+
+		items = call(valuez.get-values txn func(x) true end)
+		_ = print('View sees still these: ' items)
+
+		_ = send(ch3 'done')
+		'whatever return value view'
+	end
+
+	spawn( print('view result: ' call(valuez.view col viewer) ) )
+end
+
+main = proc()
+	open-ok open-err db = call(valuez.open 'dbexample'):
+	_ = call(stddbc.assert open-ok open-err)
+
+	col-ok col-err col = call(valuez.new-col db 'examplecol'):
+	_ = call(stddbc.assert col-ok col-err)
+
+	_ = call(valuez.put-value col 'Pizza')
+	_ = call(valuez.put-value col 'Burger')
+
+	ch1 ch2 ch3 = list(chan() chan() chan()):
+	_ = call(run-viewer ch1 ch2 ch3 col)
+	_ = recv(ch1)
+
+	_ = print('put more items to collection')
+	_ = call(valuez.put-value col 'Lasagne')
+	_ = call(valuez.put-value col 'Hot Dog')
+	
+	items = call(valuez.get-values col func(x) true end)
+	_ = print('Collection now: ' items)
+	_ = send(ch2 'continue')
+	
+	_ = recv(ch3)
+	_ = call(valuez.close db)
+	items
+end
+
+endns
+
+->
+In view
+put more items to collection
+Collection now: list('Pizza', 'Burger', 'Lasagne', 'Hot Dog')
+View sees still these: list('Burger', 'Pizza')
+view result: whatever return value view
+list('Pizza', 'Burger', 'Lasagne', 'Hot Dog')
 ```
 
 ## Install
