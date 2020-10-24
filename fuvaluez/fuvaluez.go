@@ -362,7 +362,7 @@ func (db *OpaqueDB) TypeName() string {
 
 // Str returs value as string
 func (db *OpaqueDB) Str() string {
-	return "db"
+	return fmt.Sprintf("db:%s", db.name)
 }
 
 // Equals returns equality
@@ -420,7 +420,7 @@ func (col *OpaqueCol) TypeName() string {
 
 // Str returs value as string
 func (col *OpaqueCol) Str() string {
-	return "col"
+	return fmt.Sprintf("col:%s", col.colName)
 }
 
 // Equals returns equality
@@ -430,12 +430,16 @@ func (col *OpaqueCol) Equals(with funl.OpaqueAPI) bool {
 
 // TypeName gives type name
 func (txn *OpaqueTxn) TypeName() string {
-	return "db"
+	return "txn"
 }
 
 // Str returs value as string
 func (txn *OpaqueTxn) Str() string {
-	return "db"
+	var txnColName string
+	if txn.col != nil {
+		txnColName = txn.col.colName
+	}
+	return fmt.Sprintf("txn:%s", txnColName)
 }
 
 // Equals returns equality
