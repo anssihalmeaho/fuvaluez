@@ -547,6 +547,20 @@ all other files and folders removed but following ones:
 * __Makefile__
 * __go.mod__
 
+Also rename module to some other name in **go.mod**, for example:
+
+```
+module github.com/anssihalmeaho/funl
+
+```
+
+=>
+
+```
+module funla
+
+```
+
 And then build __funla__ executable by `make`.
 
 ### ValueZ installed as std-module
