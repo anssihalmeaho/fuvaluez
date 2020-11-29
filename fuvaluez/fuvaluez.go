@@ -23,11 +23,12 @@ func newOpaqueDB(dbName string) *OpaqueDB {
 // OpaqueDB represents database
 type OpaqueDB struct {
 	sync.RWMutex
-	name    string
-	cols    map[string]*OpaqueCol
-	Ch      chan changes
-	AdminCh chan adminOP
-	Closing bool
+	name       string
+	cols       map[string]*OpaqueCol
+	Ch         chan changes
+	AdminCh    chan adminOP
+	Closing    bool
+	encoderVal funl.Value
 }
 
 type adminOP struct {
@@ -61,6 +62,15 @@ func (db *OpaqueDB) Start(frame *funl.Frame) (bool, string) {
 	}
 	db.Ch = make(chan changes)
 	db.AdminCh = make(chan adminOP)
+
+	encItem := &funl.Item{
+		Type: funl.ValueItem,
+		Data: funl.Value{
+			Kind: funl.StringValue,
+			Data: "call(proc() import stdser import stdbytes proc(x) _ _ b = call(stdser.encode x): call(stdbytes.string b) end end)",
+		},
+	}
+	db.encoderVal = funl.HandleEvalOP(frame, []*funl.Item{encItem})
 
 	pStore, err := bolt.Open(fmt.Sprintf("%s.db", db.name), 0600, nil)
 	if err != nil {
@@ -110,6 +120,15 @@ func (db *OpaqueDB) readAllcolsFromPersistent(boltDB *bolt.DB, frame *funl.Frame
 		return
 	}
 
+	decItem := &funl.Item{
+		Type: funl.ValueItem,
+		Data: funl.Value{
+			Kind: funl.StringValue,
+			Data: "call(proc() import stdser import stdbytes proc(__s) b = call(stdbytes.str-to-bytes __s) _ _ __v = call(stdser.decode b): __v end end)",
+		},
+	}
+	decoderVal := funl.HandleEvalOP(frame, []*funl.Item{decItem})
+
 	db.Lock()
 	defer db.Unlock()
 
@@ -139,14 +158,6 @@ func (db *OpaqueDB) readAllcolsFromPersistent(boltDB *bolt.DB, frame *funl.Frame
 					biggestID = idNum
 				}
 
-				decItem := &funl.Item{
-					Type: funl.ValueItem,
-					Data: funl.Value{
-						Kind: funl.StringValue,
-						Data: "call(proc() import stdser import stdbytes proc(__s) b = call(stdbytes.str-to-bytes __s) _ _ __v = call(stdser.decode b): __v end end)",
-					},
-				}
-				decoderVal := funl.HandleEvalOP(frame, []*funl.Item{decItem})
 				decArgs := []*funl.Item{
 					&funl.Item{
 						Type: funl.ValueItem,
@@ -182,18 +193,10 @@ func (db *OpaqueDB) putKVtoPersistent(tx *bolt.Tx, frame *funl.Frame, colName st
 		return fmt.Errorf("Col not found (%s)", colName)
 	}
 
-	encItem := &funl.Item{
-		Type: funl.ValueItem,
-		Data: funl.Value{
-			Kind: funl.StringValue,
-			Data: "call(proc() import stdser import stdbytes proc(x) _ _ b = call(stdser.encode x): call(stdbytes.string b) end end)",
-		},
-	}
-	encoderVal := funl.HandleEvalOP(frame, []*funl.Item{encItem})
 	encArgs := []*funl.Item{
 		&funl.Item{
 			Type: funl.ValueItem,
-			Data: encoderVal,
+			Data: db.encoderVal,
 		},
 		&funl.Item{
 			Type: funl.ValueItem,
