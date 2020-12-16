@@ -77,7 +77,7 @@ valuez.get-col(<db:opaque> <col-name:string>) -> list(<ok:bool> <error:string> <
 Gets list of collection names in db.
 
 ```
-valuez.get-col-names(<db:opaque> <col-name:string>) -> list(<ok:bool> <error:string> <col-names:list-of-strings>)
+valuez.get-col-names(<db:opaque>) -> list(<ok:bool> <error:string> <col-names:list-of-strings>)
 ```
 
 #### del-col
