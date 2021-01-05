@@ -91,7 +91,7 @@ valuez.del-col(<col:opaque>) -> list(<ok:bool> <error:string>)
 Closes db. Waits ongoing operations to finish before closing.
 
 ```
-valuez.close(<col:opaque>) -> list(<ok:bool> <error:string> <db:opaque>)
+valuez.close(<db:opaque>) -> list(<ok:bool> <error:string> <db:opaque>)
 ```
 
 ### Reading and writing values
