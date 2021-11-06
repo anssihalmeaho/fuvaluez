@@ -1,8 +1,8 @@
 module github.com/anssihalmeaho/fuvaluez
 
-go 1.14
+go 1.16
 
 require (
-        github.com/anssihalmeaho/funl v0.0.0-20201006153242-89d44f35b7fd
-        go.etcd.io/bbolt v1.3.5
+	github.com/anssihalmeaho/funl v0.0.0-20211106141409-610f84828fdc
+	go.etcd.io/bbolt v1.3.6
 )
