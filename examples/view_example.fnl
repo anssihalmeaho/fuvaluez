@@ -6,14 +6,14 @@ import stddbc
 
 run-viewer = proc(ch1 ch2 ch3 col)
 	viewer = proc(txn)
-		_ = print('In view')
-		_ = send(ch1 'ready')
-		_ = recv(ch2)
+		print('In view')
+		send(ch1 'ready')
+		recv(ch2)
 
 		items = call(valuez.get-values txn func(x) true end)
-		_ = print('View sees still these: ' items)
+		print('View sees still these: ' items)
 
-		_ = send(ch3 'done')
+		send(ch3 'done')
 		'whatever return value view'
 	end
 
@@ -22,28 +22,28 @@ end
 
 main = proc()
 	open-ok open-err db = call(valuez.open 'dbexample'):
-	_ = call(stddbc.assert open-ok open-err)
+	call(stddbc.assert open-ok open-err)
 
 	col-ok col-err col = call(valuez.new-col db 'examplecol'):
-	_ = call(stddbc.assert col-ok col-err)
+	call(stddbc.assert col-ok col-err)
 
-	_ = call(valuez.put-value col 'Pizza')
-	_ = call(valuez.put-value col 'Burger')
+	call(valuez.put-value col 'Pizza')
+	call(valuez.put-value col 'Burger')
 
 	ch1 ch2 ch3 = list(chan() chan() chan()):
-	_ = call(run-viewer ch1 ch2 ch3 col)
-	_ = recv(ch1)
+	call(run-viewer ch1 ch2 ch3 col)
+	recv(ch1)
 
-	_ = print('put more items to collection')
-	_ = call(valuez.put-value col 'Lasagne')
-	_ = call(valuez.put-value col 'Hot Dog')
+	print('put more items to collection')
+	call(valuez.put-value col 'Lasagne')
+	call(valuez.put-value col 'Hot Dog')
 
 	items = call(valuez.get-values col func(x) true end)
-	_ = print('Collection now: ' items)
-	_ = send(ch2 'continue')
+	print('Collection now: ' items)
+	send(ch2 'continue')
 
-	_ = recv(ch3)
-	_ = call(valuez.close db)
+	recv(ch3)
+	call(valuez.close db)
 	items
 end
 

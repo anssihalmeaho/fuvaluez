@@ -27,11 +27,11 @@ example-transaction = proc(txn)
 		'saldo' plus(get(jack-old 'saldo') transfer-amount)
 	)
 
-	_ = call(valuez.put-value txn john-new)
-	_ = call(valuez.put-value txn jack-new)
+	call(valuez.put-value txn john-new)
+	call(valuez.put-value txn jack-new)
 
 	items = call(valuez.get-values txn func(x) true end)
-	_ = print('From transaction accounts are: ' items '\n')
+	print('From transaction accounts are: ' items '\n')
 
 	true # changes are committed
 	#false # changes are not committed
@@ -39,21 +39,21 @@ end
 
 main = proc()
 	open-ok open-err db = call(valuez.open 'dbexample'):
-	_ = call(stddbc.assert open-ok open-err)
+	call(stddbc.assert open-ok open-err)
 
 	col-ok col-err col = call(valuez.new-col db 'accounts'):
-	_ = call(stddbc.assert col-ok col-err)
+	call(stddbc.assert col-ok col-err)
 
 	# saldos for each person
-	_ = call(valuez.put-value col map('name' 'John' 'saldo' 3500))
-	_ = call(valuez.put-value col map('name' 'Jack' 'saldo' 1000))
-	_ = call(valuez.put-value col map('name' 'Steve' 'saldo' 500))
-	_ = print('orinally accounts are: ' call(valuez.get-values col func(x) true end) '\n')
+	call(valuez.put-value col map('name' 'John' 'saldo' 3500))
+	call(valuez.put-value col map('name' 'Jack' 'saldo' 1000))
+	call(valuez.put-value col map('name' 'Steve' 'saldo' 500))
+	print('orinally accounts are: ' call(valuez.get-values col func(x) true end) '\n')
 
-	_ = call(valuez.trans col example-transaction)
+	call(valuez.trans col example-transaction)
 	items = call(valuez.get-values col func(x) true end)
 
-	_ = call(valuez.close db)
+	call(valuez.close db)
 	sprintf('resulting accounts are: %v' items)
 end
 
