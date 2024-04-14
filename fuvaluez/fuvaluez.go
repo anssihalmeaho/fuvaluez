@@ -29,6 +29,7 @@ type OpaqueDB struct {
 	AdminCh    chan adminOP
 	Closing    bool
 	encoderVal funl.Value
+	inMemOnly  bool
 }
 
 type adminOP struct {
@@ -901,11 +902,15 @@ type req struct {
 
 func GetVZOpen(name string) FZProc {
 	checkValidity := func(arguments []funl.Value) (bool, string) {
-		if l := len(arguments); l != 1 {
+		l := len(arguments)
+		if l != 1 && l != 2 {
 			return false, fmt.Sprintf("%s: wrong amount of arguments (%d), need one", name, l)
 		}
 		if arguments[0].Kind != funl.StringValue {
 			return false, fmt.Sprintf("%s: requires string value", name)
+		}
+		if l == 2 && arguments[1].Kind != funl.MapValue {
+			return false, fmt.Sprintf("%s: requires map value", name)
 		}
 		return true, ""
 	}
@@ -928,8 +933,36 @@ func GetVZOpen(name string) FZProc {
 			retVal = funl.MakeListOfValues(frame, values)
 			return
 		}
+
+		// parse options map (if given)
+		var isInMem bool
+		if len(arguments) == 2 {
+			keyvals := funl.HandleKeyvalsOP(frame, []*funl.Item{&funl.Item{Type: funl.ValueItem, Data: arguments[1]}})
+			kvListIter := funl.NewListIterator(keyvals)
+			for {
+				nextKV := kvListIter.Next()
+				if nextKV == nil {
+					break
+				}
+				kvIter := funl.NewListIterator(*nextKV)
+				keyv := *(kvIter.Next())
+				valv := *(kvIter.Next())
+				if keyv.Kind != funl.StringValue {
+					funl.RunTimeError2(frame, "%s: option key not a string: %v", name, keyv)
+				}
+				switch keyStr := keyv.Data.(string); keyStr {
+				case "in-mem":
+					if valv.Kind != funl.BoolValue {
+						funl.RunTimeError2(frame, "%s: %s value not bool: %v", name, keyStr, keyv)
+					}
+					isInMem = valv.Data.(bool)
+				}
+			}
+		}
+
 		dbName := arguments[0].Data.(string)
 		dbVal := newOpaqueDB(dbName)
+		dbVal.inMemOnly = isInMem
 		dbOk, errText := dbVal.Start(frame)
 		values = []funl.Value{
 			{
