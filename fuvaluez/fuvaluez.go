@@ -73,20 +73,27 @@ func (db *OpaqueDB) Start(frame *funl.Frame) (bool, string) {
 	}
 	db.encoderVal = funl.HandleEvalOP(frame, []*funl.Item{encItem})
 
-	pStore, err := bolt.Open(fmt.Sprintf("%s.db", db.name), 0600, nil)
-	if err != nil {
-		return false, fmt.Sprintf("Storage opening failed: %v", err)
-	}
+	var pStore *bolt.DB
+	if !db.inMemOnly {
+		var err error
+		pStore, err = bolt.Open(fmt.Sprintf("%s.db", db.name), 0600, nil)
+		if err != nil {
+			return false, fmt.Sprintf("Storage opening failed: %v", err)
+		}
 
-	err = db.readAllcolsFromPersistent(pStore, frame)
-	if err != nil {
-		return false, fmt.Sprintf("Storage reading failed: %v", err)
+		err = db.readAllcolsFromPersistent(pStore, frame)
+		if err != nil {
+			return false, fmt.Sprintf("Storage reading failed: %v", err)
+		}
 	}
 	go db.run(pStore, frame)
 	return true, ""
 }
 
 func (db *OpaqueDB) addColToPersistent(boltDB *bolt.DB, colName string, col *OpaqueCol) error {
+	if db.inMemOnly {
+		return nil
+	}
 	return boltDB.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucket([]byte(colName))
 		if err != nil {
@@ -219,6 +226,9 @@ func (db *OpaqueDB) delKVfromPersistent(tx *bolt.Tx, frame *funl.Frame, colName 
 }
 
 func (db *OpaqueDB) consistentChangeWrites(boltDB *bolt.DB, frame *funl.Frame, changelist []changeItem) error {
+	if db.inMemOnly {
+		return nil
+	}
 	err := boltDB.Update(func(tx *bolt.Tx) error {
 		for _, chItem := range changelist {
 			switch chItem.ChType {
@@ -243,6 +253,9 @@ func (db *OpaqueDB) consistentChangeWrites(boltDB *bolt.DB, frame *funl.Frame, c
 }
 
 func (db *OpaqueDB) delColFromPersistent(boltDB *bolt.DB, colName string, col *OpaqueCol) error {
+	if db.inMemOnly {
+		return nil
+	}
 	return boltDB.Update(func(tx *bolt.Tx) error {
 		errDelB := tx.DeleteBucket([]byte(colName))
 
@@ -259,6 +272,9 @@ func (db *OpaqueDB) delColFromPersistent(boltDB *bolt.DB, colName string, col *O
 }
 
 func (db *OpaqueDB) closePersistent(boltDB *bolt.DB) error {
+	if db.inMemOnly {
+		return nil
+	}
 	return boltDB.Close()
 }
 
