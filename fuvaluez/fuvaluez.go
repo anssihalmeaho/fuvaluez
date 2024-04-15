@@ -29,6 +29,7 @@ type OpaqueDB struct {
 	AdminCh    chan adminOP
 	Closing    bool
 	encoderVal funl.Value
+	inMemOnly  bool
 }
 
 type adminOP struct {
@@ -72,20 +73,27 @@ func (db *OpaqueDB) Start(frame *funl.Frame) (bool, string) {
 	}
 	db.encoderVal = funl.HandleEvalOP(frame, []*funl.Item{encItem})
 
-	pStore, err := bolt.Open(fmt.Sprintf("%s.db", db.name), 0600, nil)
-	if err != nil {
-		return false, fmt.Sprintf("Storage opening failed: %v", err)
-	}
+	var pStore *bolt.DB
+	if !db.inMemOnly {
+		var err error
+		pStore, err = bolt.Open(fmt.Sprintf("%s.db", db.name), 0600, nil)
+		if err != nil {
+			return false, fmt.Sprintf("Storage opening failed: %v", err)
+		}
 
-	err = db.readAllcolsFromPersistent(pStore, frame)
-	if err != nil {
-		return false, fmt.Sprintf("Storage reading failed: %v", err)
+		err = db.readAllcolsFromPersistent(pStore, frame)
+		if err != nil {
+			return false, fmt.Sprintf("Storage reading failed: %v", err)
+		}
 	}
 	go db.run(pStore, frame)
 	return true, ""
 }
 
 func (db *OpaqueDB) addColToPersistent(boltDB *bolt.DB, colName string, col *OpaqueCol) error {
+	if db.inMemOnly {
+		return nil
+	}
 	return boltDB.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucket([]byte(colName))
 		if err != nil {
@@ -218,6 +226,9 @@ func (db *OpaqueDB) delKVfromPersistent(tx *bolt.Tx, frame *funl.Frame, colName 
 }
 
 func (db *OpaqueDB) consistentChangeWrites(boltDB *bolt.DB, frame *funl.Frame, changelist []changeItem) error {
+	if db.inMemOnly {
+		return nil
+	}
 	err := boltDB.Update(func(tx *bolt.Tx) error {
 		for _, chItem := range changelist {
 			switch chItem.ChType {
@@ -242,6 +253,9 @@ func (db *OpaqueDB) consistentChangeWrites(boltDB *bolt.DB, frame *funl.Frame, c
 }
 
 func (db *OpaqueDB) delColFromPersistent(boltDB *bolt.DB, colName string, col *OpaqueCol) error {
+	if db.inMemOnly {
+		return nil
+	}
 	return boltDB.Update(func(tx *bolt.Tx) error {
 		errDelB := tx.DeleteBucket([]byte(colName))
 
@@ -258,6 +272,9 @@ func (db *OpaqueDB) delColFromPersistent(boltDB *bolt.DB, colName string, col *O
 }
 
 func (db *OpaqueDB) closePersistent(boltDB *bolt.DB) error {
+	if db.inMemOnly {
+		return nil
+	}
 	return boltDB.Close()
 }
 
@@ -901,11 +918,15 @@ type req struct {
 
 func GetVZOpen(name string) FZProc {
 	checkValidity := func(arguments []funl.Value) (bool, string) {
-		if l := len(arguments); l != 1 {
+		l := len(arguments)
+		if l != 1 && l != 2 {
 			return false, fmt.Sprintf("%s: wrong amount of arguments (%d), need one", name, l)
 		}
 		if arguments[0].Kind != funl.StringValue {
 			return false, fmt.Sprintf("%s: requires string value", name)
+		}
+		if l == 2 && arguments[1].Kind != funl.MapValue {
+			return false, fmt.Sprintf("%s: requires map value", name)
 		}
 		return true, ""
 	}
@@ -928,8 +949,36 @@ func GetVZOpen(name string) FZProc {
 			retVal = funl.MakeListOfValues(frame, values)
 			return
 		}
+
+		// parse options map (if given)
+		var isInMem bool
+		if len(arguments) == 2 {
+			keyvals := funl.HandleKeyvalsOP(frame, []*funl.Item{&funl.Item{Type: funl.ValueItem, Data: arguments[1]}})
+			kvListIter := funl.NewListIterator(keyvals)
+			for {
+				nextKV := kvListIter.Next()
+				if nextKV == nil {
+					break
+				}
+				kvIter := funl.NewListIterator(*nextKV)
+				keyv := *(kvIter.Next())
+				valv := *(kvIter.Next())
+				if keyv.Kind != funl.StringValue {
+					funl.RunTimeError2(frame, "%s: option key not a string: %v", name, keyv)
+				}
+				switch keyStr := keyv.Data.(string); keyStr {
+				case "in-mem":
+					if valv.Kind != funl.BoolValue {
+						funl.RunTimeError2(frame, "%s: %s value not bool: %v", name, keyStr, keyv)
+					}
+					isInMem = valv.Data.(bool)
+				}
+			}
+		}
+
 		dbName := arguments[0].Data.(string)
 		dbVal := newOpaqueDB(dbName)
+		dbVal.inMemOnly = isInMem
 		dbOk, errText := dbVal.Start(frame)
 		values = []funl.Value{
 			{
