@@ -26,6 +26,12 @@ Views are snapshots of collection. View is implemented with procedure call insid
 ## Storage engine: bbolt
 Persistent storage is implemented by using [bbolt](https://github.com/etcd-io/bbolt) key-value storage.
 
+ValueZ can act also as in-memory mode also if 'in-mem' option in **open** is given as **true**.
+In-memory mode means that data is not written to permanent storage (**bbolt**, file) but only stored in memory.
+
+**Note.** if in-memory mode is used then also such FunL data which is not serializable (like functions, channels etc.)
+can be stored (as it doesn't need to be serialized before storing).
+
 ## Value types
 Values (in collection) can be any [serializable FunL values](https://github.com/anssihalmeaho/funl/wiki/stdser).
 
@@ -57,7 +63,15 @@ Database file is created with name given as argument (if not existing already).
 
 ```
 valuez.open(<db-name:string>) -> list(<ok:bool> <error:string> <db:opaque>)
+valuez.open(<db-name:string> <OPTIONAL:options-map>) -> list(<ok:bool> <error:string> <db:opaque>)
 ```
+
+Optionally options map can be given as 2nd argument:
+
+Key (string) | Value
+------------ | -----
+'in-mem' | if **true** then db is storen in memory only, if **false** then also stored to permanent storage
+
 
 #### new-col
 Creates new collection for db.
