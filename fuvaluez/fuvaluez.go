@@ -188,7 +188,7 @@ func (db *OpaqueDB) readAllcolsFromPersistent(boltDB *bolt.DB, frame *funl.Frame
 
 			col.idCounter = biggestID + 1
 			db.cols[colName] = col
-			go col.Run()
+			go col.Run(frame)
 		}
 		return nil
 	})
@@ -430,6 +430,7 @@ type OpaqueCol struct {
 	Db             *OpaqueDB
 	colName        string
 	Closed         bool
+	AsList         *funl.Value
 	closedMutex    sync.RWMutex
 }
 
@@ -475,6 +476,33 @@ type OpaqueTxn struct {
 	newDeleted map[string]bool
 	snapM      map[string]funl.Value
 	col        *OpaqueCol
+	AsList     *funl.Value
+}
+
+func (txn *OpaqueTxn) MakeList(frame *funl.Frame) {
+	newItems := map[string]funl.Value{}
+	if txn.isReadTxn {
+		for k, v := range txn.snapM {
+			newItems[k] = v
+		}
+	} else {
+		for k, v := range txn.col.Items {
+			newItems[k] = v
+		}
+		for k, v := range txn.newM {
+			newItems[k] = v
+		}
+		for itemID := range txn.newDeleted {
+			delete(newItems, itemID)
+		}
+	}
+	values := []funl.Value{}
+	for _, v := range newItems {
+		values = append(values, v)
+	}
+
+	list := funl.MakeListOfValues(frame, values)
+	txn.AsList = &list
 }
 
 func newTxn(col *OpaqueCol, isReadTxn bool) *OpaqueTxn {
@@ -531,8 +559,19 @@ func autoResponser(reqch chan req) {
 	}
 }
 
+func (col *OpaqueCol) MakeList(frame *funl.Frame) {
+	values := []funl.Value{}
+	for _, v := range col.Items {
+		values = append(values, v)
+	}
+	list := funl.MakeListOfValues(frame, values)
+	col.AsList = &list
+}
+
 // Run runs updator
-func (col *OpaqueCol) Run() {
+func (col *OpaqueCol) Run(frame *funl.Frame) {
+	col.MakeList(frame)
+
 	//col.idCounter = 100
 	for {
 		req := <-col.ch
@@ -602,6 +641,13 @@ func (col *OpaqueCol) Run() {
 			go autoResponser(col.ch)
 			return // exit from goroutine
 
+		case asListReq:
+			if col.AsList == nil {
+				req.replyCh <- funl.MakeListOfValues(frame, []funl.Value{})
+			} else {
+				req.replyCh <- *col.AsList
+			}
+
 		case putReq:
 			col.idCounter++
 			idVal := strconv.Itoa(col.idCounter)
@@ -634,6 +680,7 @@ func (col *OpaqueCol) Run() {
 			}
 			replyVal := funl.MakeListOfValues(req.frame, replyValues)
 			col.latestSnapshot = nil
+			col.MakeList(req.frame)
 			req.replyCh <- replyVal
 
 		case takeReq:
@@ -708,6 +755,7 @@ func (col *OpaqueCol) Run() {
 			for _, itemID := range takenIDs {
 				delete(col.Items, itemID)
 			}
+			col.MakeList(req.frame)
 			col.Unlock()
 			col.latestSnapshot = nil // could be optimized (if any deleted then invalidate)
 			req.replyCh <- funl.MakeListOfValues(req.frame, results)
@@ -779,6 +827,7 @@ func (col *OpaqueCol) Run() {
 					// now lock
 					col.Lock()
 					col.Items = newMap
+					col.MakeList(req.frame)
 					col.Unlock()
 					col.latestSnapshot = nil
 				}
@@ -791,6 +840,7 @@ func (col *OpaqueCol) Run() {
 				Data: req.reqData,
 			}
 			txn := newTxn(col, false)
+			txn.MakeList(req.frame)
 			argsForCall := []*funl.Item{
 				transProc,
 				&funl.Item{
@@ -856,6 +906,7 @@ func (col *OpaqueCol) Run() {
 					for itemID := range txn.newDeleted {
 						delete(col.Items, itemID)
 					}
+					col.MakeList(req.frame)
 					col.Unlock()
 					col.latestSnapshot = nil
 				} else {
@@ -873,6 +924,7 @@ func (col *OpaqueCol) Run() {
 				}
 			}
 			txn.snapM = col.latestSnapshot
+			txn.MakeList(req.frame)
 			req.replyCh <- funl.Value{Kind: funl.OpaqueValue, Data: txn}
 
 		default:
@@ -881,7 +933,7 @@ func (col *OpaqueCol) Run() {
 	}
 }
 
-func newOpaqueCol(colName string, dbVal *OpaqueDB) *OpaqueCol {
+func newOpaqueCol(frame *funl.Frame, colName string, dbVal *OpaqueDB) *OpaqueCol {
 	col := &OpaqueCol{
 		Items:          make(map[string]funl.Value),
 		ch:             make(chan req),
@@ -890,7 +942,7 @@ func newOpaqueCol(colName string, dbVal *OpaqueDB) *OpaqueCol {
 		colName:        colName,
 		idCounter:      100,
 	}
-	go col.Run()
+	go col.Run(frame)
 	return col
 }
 
@@ -904,6 +956,7 @@ const (
 	viewReq     = 5
 	delColReq   = 6
 	shutdownReq = 7
+	asListReq   = 8
 )
 
 type req struct {
@@ -1138,6 +1191,7 @@ func GetVZUpdate(name string) FZProc {
 					m[k] = v
 				}
 			}
+			txn.MakeList(frame)
 			txn.RUnlock()
 
 			var isAnyUpdates bool
@@ -1260,6 +1314,7 @@ func GetVZTakeValues(name string) FZProc {
 			for _, itemID := range takenIDs {
 				txn.newDeleted[itemID] = true
 			}
+			txn.MakeList(frame)
 			txn.Unlock()
 			retVal = funl.MakeListOfValues(frame, results)
 			return
@@ -1441,6 +1496,7 @@ func GetVZPutValue(name string) FZProc {
 			txn.Lock()
 			txn.newM[idVal] = arguments[1]
 			delete(txn.newDeleted, idVal)
+			txn.MakeList(frame)
 			txn.Unlock()
 			replyValues := []funl.Value{
 				{
@@ -1459,6 +1515,48 @@ func GetVZPutValue(name string) FZProc {
 		request := &req{
 			reqType: putReq,
 			reqData: arguments[1],
+			replyCh: replyCh,
+			frame:   frame,
+		}
+		col.ch <- *request
+		retVal = <-replyCh
+		return
+	}
+}
+
+func GetVZItems(name string) FZProc {
+	checkValidity := func(arguments []funl.Value) (bool, string) {
+		if l := len(arguments); l != 1 {
+			return false, fmt.Sprintf("%s: wrong amount of arguments (%d), need one", name, l)
+		}
+		if arguments[0].Kind != funl.OpaqueValue {
+			return false, fmt.Sprintf("%s: requires opaque value", name)
+		}
+		return true, ""
+	}
+
+	return func(frame *funl.Frame, arguments []funl.Value) (retVal funl.Value) {
+		ok, errStr := checkValidity(arguments)
+		if !ok {
+			funl.RunTimeError2(frame, errStr)
+		}
+		isTxn, col, txn := getColAndTxn(arguments[0])
+		if (col == nil) && (txn == nil) {
+			funl.RunTimeError2(frame, "invalid col")
+		}
+
+		if isTxn {
+			if txn.AsList == nil {
+				retVal = funl.MakeListOfValues(frame, []funl.Value{})
+			} else {
+				retVal = *txn.AsList
+			}
+			return
+		}
+
+		replyCh := make(chan funl.Value)
+		request := &req{
+			reqType: asListReq,
 			replyCh: replyCh,
 			frame:   frame,
 		}
@@ -1508,7 +1606,7 @@ func GetVZNewCol(name string) FZProc {
 			return
 		}
 		colName := arguments[1].Data.(string)
-		col := newOpaqueCol(colName, dbVal)
+		col := newOpaqueCol(frame, colName, dbVal)
 
 		replych := make(chan error)
 		adminOp := adminOP{
