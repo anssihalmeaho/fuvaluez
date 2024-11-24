@@ -479,6 +479,10 @@ type OpaqueTxn struct {
 	AsList     *funl.Value
 }
 
+func (txn *OpaqueTxn) InvalidateList() {
+	txn.AsList = nil
+}
+
 func (txn *OpaqueTxn) MakeList(frame *funl.Frame) {
 	newItems := map[string]funl.Value{}
 	if txn.isReadTxn {
@@ -559,6 +563,10 @@ func autoResponser(reqch chan req) {
 	}
 }
 
+func (col *OpaqueCol) InvalidateList() {
+	col.AsList = nil
+}
+
 func (col *OpaqueCol) MakeList(frame *funl.Frame) {
 	values := []funl.Value{}
 	for _, v := range col.Items {
@@ -570,8 +578,6 @@ func (col *OpaqueCol) MakeList(frame *funl.Frame) {
 
 // Run runs updator
 func (col *OpaqueCol) Run(frame *funl.Frame) {
-	col.MakeList(frame)
-
 	//col.idCounter = 100
 	for {
 		req := <-col.ch
@@ -643,10 +649,9 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 
 		case asListReq:
 			if col.AsList == nil {
-				req.replyCh <- funl.MakeListOfValues(frame, []funl.Value{})
-			} else {
-				req.replyCh <- *col.AsList
+				col.MakeList(req.frame)
 			}
+			req.replyCh <- *col.AsList
 
 		case putReq:
 			col.idCounter++
@@ -680,7 +685,7 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 			}
 			replyVal := funl.MakeListOfValues(req.frame, replyValues)
 			col.latestSnapshot = nil
-			col.MakeList(req.frame)
+			col.InvalidateList()
 			req.replyCh <- replyVal
 
 		case takeReq:
@@ -755,7 +760,7 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 			for _, itemID := range takenIDs {
 				delete(col.Items, itemID)
 			}
-			col.MakeList(req.frame)
+			col.InvalidateList()
 			col.Unlock()
 			col.latestSnapshot = nil // could be optimized (if any deleted then invalidate)
 			req.replyCh <- funl.MakeListOfValues(req.frame, results)
@@ -827,7 +832,7 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 					// now lock
 					col.Lock()
 					col.Items = newMap
-					col.MakeList(req.frame)
+					col.InvalidateList()
 					col.Unlock()
 					col.latestSnapshot = nil
 				}
@@ -840,7 +845,6 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 				Data: req.reqData,
 			}
 			txn := newTxn(col, false)
-			txn.MakeList(req.frame)
 			argsForCall := []*funl.Item{
 				transProc,
 				&funl.Item{
@@ -906,7 +910,7 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 					for itemID := range txn.newDeleted {
 						delete(col.Items, itemID)
 					}
-					col.MakeList(req.frame)
+					col.InvalidateList()
 					col.Unlock()
 					col.latestSnapshot = nil
 				} else {
@@ -924,7 +928,6 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 				}
 			}
 			txn.snapM = col.latestSnapshot
-			txn.MakeList(req.frame)
 			req.replyCh <- funl.Value{Kind: funl.OpaqueValue, Data: txn}
 
 		default:
@@ -1191,7 +1194,6 @@ func GetVZUpdate(name string) FZProc {
 					m[k] = v
 				}
 			}
-			txn.MakeList(frame)
 			txn.RUnlock()
 
 			var isAnyUpdates bool
@@ -1219,6 +1221,7 @@ func GetVZUpdate(name string) FZProc {
 				// now lock
 				txn.Lock()
 				txn.newM = newMap
+				txn.InvalidateList()
 				txn.Unlock()
 			}
 			retVal = funl.Value{Kind: funl.BoolValue, Data: true}
@@ -1314,7 +1317,7 @@ func GetVZTakeValues(name string) FZProc {
 			for _, itemID := range takenIDs {
 				txn.newDeleted[itemID] = true
 			}
-			txn.MakeList(frame)
+			txn.InvalidateList()
 			txn.Unlock()
 			retVal = funl.MakeListOfValues(frame, results)
 			return
@@ -1496,7 +1499,7 @@ func GetVZPutValue(name string) FZProc {
 			txn.Lock()
 			txn.newM[idVal] = arguments[1]
 			delete(txn.newDeleted, idVal)
-			txn.MakeList(frame)
+			txn.InvalidateList()
 			txn.Unlock()
 			replyValues := []funl.Value{
 				{
@@ -1546,11 +1549,15 @@ func GetVZItems(name string) FZProc {
 		}
 
 		if isTxn {
-			if txn.AsList == nil {
-				retVal = funl.MakeListOfValues(frame, []funl.Value{})
-			} else {
+			func() {
+				txn.Lock()
+				defer txn.Unlock()
+
+				if txn.AsList == nil {
+					txn.MakeList(frame)
+				}
 				retVal = *txn.AsList
-			}
+			}()
 			return
 		}
 
