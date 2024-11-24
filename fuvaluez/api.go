@@ -37,7 +37,7 @@ func GetVZOpen(name string) FZProc {
 					Kind: funl.StringValue,
 					Data: errStr,
 				},
-				funl.Value{Kind: funl.OpaqueValue, Data: &OpaqueDB{}},
+				{Kind: funl.OpaqueValue, Data: &OpaqueDB{}},
 			}
 			retVal = funl.MakeListOfValues(frame, values)
 			return
@@ -46,7 +46,7 @@ func GetVZOpen(name string) FZProc {
 		// parse options map (if given)
 		var isInMem bool
 		if len(arguments) == 2 {
-			keyvals := funl.HandleKeyvalsOP(frame, []*funl.Item{&funl.Item{Type: funl.ValueItem, Data: arguments[1]}})
+			keyvals := funl.HandleKeyvalsOP(frame, []*funl.Item{{Type: funl.ValueItem, Data: arguments[1]}})
 			kvListIter := funl.NewListIterator(keyvals)
 			for {
 				nextKV := kvListIter.Next()
@@ -82,7 +82,7 @@ func GetVZOpen(name string) FZProc {
 				Kind: funl.StringValue,
 				Data: errText,
 			},
-			funl.Value{Kind: funl.OpaqueValue, Data: dbVal},
+			{Kind: funl.OpaqueValue, Data: dbVal},
 		}
 		retVal = funl.MakeListOfValues(frame, values)
 		return
@@ -131,7 +131,7 @@ func GetVZView(name string) FZProc {
 		}
 		argsForCall := []*funl.Item{
 			viewProc,
-			&funl.Item{
+			{
 				Type: funl.ValueItem,
 				Data: txnVal,
 			},
@@ -237,7 +237,7 @@ func GetVZUpdate(name string) FZProc {
 			for k, v := range m {
 				argsForCall := []*funl.Item{
 					updFunc,
-					&funl.Item{
+					{
 						Type: funl.ValueItem,
 						Data: v,
 					},
@@ -335,7 +335,7 @@ func GetVZTakeValues(name string) FZProc {
 			for k, v := range m {
 				argsForCall := []*funl.Item{
 					filterFunc,
-					&funl.Item{
+					{
 						Type: funl.ValueItem,
 						Data: v,
 					},
@@ -417,7 +417,7 @@ func GetVZGetValues(name string) FZProc {
 					for _, v := range txn.snapM {
 						argsForCall := []*funl.Item{
 							filterFunc,
-							&funl.Item{
+							{
 								Type: funl.ValueItem,
 								Data: v,
 							},
@@ -451,7 +451,7 @@ func GetVZGetValues(name string) FZProc {
 			for _, v := range m {
 				argsForCall := []*funl.Item{
 					filterFunc,
-					&funl.Item{
+					{
 						Type: funl.ValueItem,
 						Data: v,
 					},
@@ -475,7 +475,7 @@ func GetVZGetValues(name string) FZProc {
 			for _, v := range col.Items {
 				argsForCall := []*funl.Item{
 					filterFunc,
-					&funl.Item{
+					{
 						Type: funl.ValueItem,
 						Data: v,
 					},
@@ -502,7 +502,7 @@ func getColAndTxn(val funl.Value) (isTxn bool, col *OpaqueCol, txn *OpaqueTxn) {
 	}
 	col, convOK = val.Data.(*OpaqueCol)
 	if convOK {
-		return false, val.Data.(*OpaqueCol), nil
+		return false, col, nil
 	}
 	return false, nil, nil
 }
@@ -644,7 +644,7 @@ func GetVZNewCol(name string) FZProc {
 					Kind: funl.StringValue,
 					Data: errStr,
 				},
-				funl.Value{Kind: funl.OpaqueValue, Data: &OpaqueCol{}},
+				{Kind: funl.OpaqueValue, Data: &OpaqueCol{}},
 			}
 			retVal = funl.MakeListOfValues(frame, values)
 			return
@@ -671,7 +671,7 @@ func GetVZNewCol(name string) FZProc {
 					Kind: funl.StringValue,
 					Data: fmt.Sprintf("%s: error in creating col: %v", name, err),
 				},
-				funl.Value{Kind: funl.OpaqueValue, Data: &OpaqueCol{}},
+				{Kind: funl.OpaqueValue, Data: &OpaqueCol{}},
 			}
 			retVal = funl.MakeListOfValues(frame, values)
 			return
@@ -686,7 +686,7 @@ func GetVZNewCol(name string) FZProc {
 				Kind: funl.StringValue,
 				Data: "",
 			},
-			funl.Value{Kind: funl.OpaqueValue, Data: col},
+			{Kind: funl.OpaqueValue, Data: col},
 		}
 		retVal = funl.MakeListOfValues(frame, values)
 		return
@@ -785,7 +785,7 @@ func GetVZGetCol(name string) FZProc {
 					Kind: funl.StringValue,
 					Data: errStr,
 				},
-				funl.Value{Kind: funl.OpaqueValue, Data: &OpaqueCol{}},
+				{Kind: funl.OpaqueValue, Data: &OpaqueCol{}},
 			}
 			retVal = funl.MakeListOfValues(frame, values)
 			return
@@ -805,7 +805,7 @@ func GetVZGetCol(name string) FZProc {
 				Kind: funl.StringValue,
 				Data: errText,
 			},
-			funl.Value{Kind: funl.OpaqueValue, Data: col},
+			{Kind: funl.OpaqueValue, Data: col},
 		}
 		retVal = funl.MakeListOfValues(frame, values)
 		return
@@ -856,7 +856,7 @@ func GetVZDelCol(name string) FZProc {
 			frame:   frame,
 		}
 		col.ch <- *request
-		retVal = <-replyCh
+		<-replyCh
 
 		values = []funl.Value{
 			{
@@ -904,7 +904,7 @@ func GetVZClose(name string) FZProc {
 					Kind: funl.StringValue,
 					Data: errStr,
 				},
-				funl.Value{Kind: funl.OpaqueValue, Data: &OpaqueDB{}},
+				{Kind: funl.OpaqueValue, Data: &OpaqueDB{}},
 			}
 			retVal = funl.MakeListOfValues(frame, values)
 			return
@@ -931,7 +931,7 @@ func GetVZClose(name string) FZProc {
 				Kind: funl.StringValue,
 				Data: errText,
 			},
-			funl.Value{Kind: funl.OpaqueValue, Data: dbVal},
+			{Kind: funl.OpaqueValue, Data: dbVal},
 		}
 		retVal = funl.MakeListOfValues(frame, values)
 		return

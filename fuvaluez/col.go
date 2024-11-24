@@ -287,7 +287,7 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 			for k, v := range col.Items {
 				argsForCall := []*funl.Item{
 					filterFunc,
-					&funl.Item{
+					{
 						Type: funl.ValueItem,
 						Data: v,
 					},
@@ -364,7 +364,7 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 			for k, v := range col.Items {
 				argsForCall := []*funl.Item{
 					updFunc,
-					&funl.Item{
+					{
 						Type: funl.ValueItem,
 						Data: v,
 					},
@@ -435,7 +435,7 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 			txn := newTxn(col, false)
 			argsForCall := []*funl.Item{
 				transProc,
-				&funl.Item{
+				{
 					Type: funl.ValueItem,
 					Data: funl.Value{Kind: funl.OpaqueValue, Data: txn},
 				},

@@ -141,7 +141,7 @@ func (db *OpaqueDB) readAllcolsFromPersistent(boltDB *bolt.DB, frame *funl.Frame
 		for _, colName := range colNames {
 			colBucket := tx.Bucket([]byte(colName))
 			if colBucket == nil {
-				return fmt.Errorf("Col not found (%s)", colName)
+				return fmt.Errorf("col not found (%s)", colName)
 			}
 
 			col := &OpaqueCol{
@@ -164,11 +164,11 @@ func (db *OpaqueDB) readAllcolsFromPersistent(boltDB *bolt.DB, frame *funl.Frame
 				}
 
 				decArgs := []*funl.Item{
-					&funl.Item{
+					{
 						Type: funl.ValueItem,
 						Data: decoderVal,
 					},
-					&funl.Item{
+					{
 						Type: funl.ValueItem,
 						Data: funl.Value{Kind: funl.StringValue, Data: string(v)},
 					},
@@ -195,15 +195,15 @@ func (db *OpaqueDB) readAllcolsFromPersistent(boltDB *bolt.DB, frame *funl.Frame
 func (db *OpaqueDB) putKVtoPersistent(tx *bolt.Tx, frame *funl.Frame, colName string, key string, val funl.Value) error {
 	colBucket := tx.Bucket([]byte(colName))
 	if colBucket == nil {
-		return fmt.Errorf("Col not found (%s)", colName)
+		return fmt.Errorf("col not found (%s)", colName)
 	}
 
 	encArgs := []*funl.Item{
-		&funl.Item{
+		{
 			Type: funl.ValueItem,
 			Data: db.encoderVal,
 		},
-		&funl.Item{
+		{
 			Type: funl.ValueItem,
 			Data: val,
 		},
@@ -217,7 +217,7 @@ func (db *OpaqueDB) putKVtoPersistent(tx *bolt.Tx, frame *funl.Frame, colName st
 func (db *OpaqueDB) delKVfromPersistent(tx *bolt.Tx, frame *funl.Frame, colName string, key string) error {
 	colBucket := tx.Bucket([]byte(colName))
 	if colBucket == nil {
-		return fmt.Errorf("Col not found (%s)", colName)
+		return fmt.Errorf("col not found (%s)", colName)
 	}
 	return colBucket.Delete([]byte(key))
 }
@@ -317,7 +317,7 @@ func (db *OpaqueDB) run(boltDB *bolt.DB, frame *funl.Frame) {
 
 			case "close-db":
 				if db.Closing {
-					adminOp.replych <- fmt.Errorf("Already closing")
+					adminOp.replych <- fmt.Errorf("already closing")
 					break reqSwitch
 				}
 				db.Closing = true
@@ -366,7 +366,7 @@ func (db *OpaqueDB) run(boltDB *bolt.DB, frame *funl.Frame) {
 				adminOp.replych <- err
 
 			default:
-				adminOp.replych <- errors.New("Unknown op")
+				adminOp.replych <- errors.New("unknown op")
 			}
 		}
 	}
