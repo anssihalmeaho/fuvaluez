@@ -50,6 +50,7 @@ ValueZ provides following kind of interfaces for client:
     * get-values
     * take-values
     * update
+    * items
 * transactions/views
     * trans
     * view
@@ -531,6 +532,19 @@ view result: whatever return value view
 list('Pizza', 'Burger', 'Lasagne', 'Hot Dog')
 ```
 
+### Collection as unordered list
+
+#### items
+Returns given collection/transaction as unordered FunL list.
+It's unordered as no guarantees are given of order of items in list.
+
+If argument is transaction/view then list contains contents of
+current transaction/view.
+
+```
+valuez.items(<col/txn:opaque>) -> <list>
+```
+
 ## Install
 There are two ways to take ValueZ into use:
 
@@ -653,6 +667,10 @@ func initMyExt(interpreter *funl.Interpreter) (err error) {
 		{
 			Name:   "del-col",
 			Getter: convGetter(fuvaluez.GetVZDelCol),
+		},
+		{
+			Name:   "items",
+			Getter: convGetter(fuvaluez.GetVZItems),
 		},
 		{
 			Name:   "close",
