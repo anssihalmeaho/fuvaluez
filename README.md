@@ -545,6 +545,30 @@ current transaction/view.
 valuez.items(<col/txn:opaque>) -> <list>
 ```
 
+### Listening events of changes in value store
+Changes in collection can be listened by registering listener procedure.
+
+```
+valuez.add-listener(<col> <procedure>) -> bool
+```
+
+Procedure given as argument is following kind:
+
+```
+<proc>(event:list) -> return value can be anything, it's ignored
+```
+
+Events have these formats:
+
+* Items added: **list('added' list(value ...))**
+* Items updated: **list('updated' list(list(old-value new-value) ...))**
+* Items taken: **list('deleted' list(value ...))**
+* Transaction: **list('transaction' list(...))**
+
+Transaction event contains list of added/updated/taken changes.
+Transaction event shows changes only compared to original collection
+(not for example if item was added and removed during transaction).
+
 ## Install
 There are two ways to take ValueZ into use:
 
@@ -671,6 +695,10 @@ func initMyExt(interpreter *funl.Interpreter) (err error) {
 		{
 			Name:   "items",
 			Getter: convGetter(fuvaluez.GetVZItems),
+		},
+		{
+			Name:   "add-listener",
+			Getter: convGetter(fuvaluez.GetVZAddListener),
 		},
 		{
 			Name:   "close",
