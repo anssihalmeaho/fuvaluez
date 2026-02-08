@@ -19,7 +19,15 @@ type OpaqueCol struct {
 	colName        string
 	Closed         bool
 	AsList         *funl.Value
+	listeners      []*funl.Item
 	closedMutex    sync.RWMutex
+}
+
+func (col *OpaqueCol) hasListeners() bool {
+	if col.listeners == nil {
+		col.listeners = []*funl.Item{}
+	}
+	return len(col.listeners) > 0
 }
 
 // TypeName gives type name
@@ -241,6 +249,13 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 			}
 			req.replyCh <- *col.AsList
 
+		case addListenerReq:
+			if col.listeners == nil {
+				col.listeners = []*funl.Item{}
+			}
+			col.listeners = append(col.listeners, &funl.Item{Type: funl.ValueItem, Data: req.reqData})
+			req.replyCh <- funl.Value{Kind: funl.BoolValue, Data: true}
+
 		case putReq:
 			col.idCounter++
 			idVal := strconv.Itoa(col.idCounter)
@@ -274,6 +289,25 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 			replyVal := funl.MakeListOfValues(req.frame, replyValues)
 			col.latestSnapshot = nil
 			col.InvalidateList()
+
+			if col.hasListeners() {
+				if storeErr == nil {
+					for _, listener := range col.listeners {
+						event := funl.MakeListOfValues(req.frame, []funl.Value{{Kind: funl.StringValue, Data: "added"}, funl.MakeListOfValues(req.frame, []funl.Value{req.reqData})})
+						func() {
+							defer func() {
+								recover()
+							}()
+
+							funl.HandleCallOP(req.frame, []*funl.Item{
+								listener,
+								{Type: funl.ValueItem, Data: event},
+							})
+						}()
+					}
+				}
+			}
+
 			req.replyCh <- replyVal
 
 		case takeReq:
@@ -351,6 +385,23 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 			col.InvalidateList()
 			col.Unlock()
 			col.latestSnapshot = nil // could be optimized (if any deleted then invalidate)
+
+			if col.hasListeners() {
+				for _, listener := range col.listeners {
+					event := funl.MakeListOfValues(req.frame, []funl.Value{{Kind: funl.StringValue, Data: "deleted"}, funl.MakeListOfValues(req.frame, results)})
+					func() {
+						defer func() {
+							recover()
+						}()
+
+						funl.HandleCallOP(req.frame, []*funl.Item{
+							listener,
+							{Type: funl.ValueItem, Data: event},
+						})
+					}()
+				}
+			}
+
 			req.replyCh <- funl.MakeListOfValues(req.frame, results)
 
 		case updateReq:
@@ -360,6 +411,7 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 				Data: req.reqData,
 			}
 			newMap := make(map[string]funl.Value)
+			updated := []funl.Value{}
 			var isAnyUpdates bool
 			for k, v := range col.Items {
 				argsForCall := []*funl.Item{
@@ -392,6 +444,7 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 				}
 				if doUpdate {
 					newMap[k] = newValue
+					updated = append(updated, funl.MakeListOfValues(req.frame, []funl.Value{v, newValue}))
 					isAnyUpdates = true
 				} else {
 					newMap[k] = v
@@ -423,6 +476,23 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 					col.InvalidateList()
 					col.Unlock()
 					col.latestSnapshot = nil
+
+					if col.hasListeners() {
+						for _, listener := range col.listeners {
+							event := funl.MakeListOfValues(req.frame, []funl.Value{{Kind: funl.StringValue, Data: "updated"}, funl.MakeListOfValues(req.frame, updated)})
+							func() {
+								defer func() {
+									recover()
+								}()
+
+								funl.HandleCallOP(req.frame, []*funl.Item{
+									listener,
+									{Type: funl.ValueItem, Data: event},
+								})
+							}()
+						}
+					}
+
 				}
 			}
 			req.replyCh <- funl.Value{Kind: funl.BoolValue, Data: commitUpdates}
@@ -490,6 +560,29 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 				committedToPersistent = (storeErr == nil)
 
 				if committedToPersistent {
+					deleted := []funl.Value{}
+					added := []funl.Value{}
+					updated := []funl.Value{}
+
+					if col.hasListeners() {
+						for delkey, _ := range txn.newDeleted {
+							delv, exists := col.Items[delkey]
+							if exists {
+								deleted = append(deleted, delv)
+							}
+						}
+						for newkey, newv := range txn.newM {
+							if _, found := txn.newDeleted[newkey]; found {
+								continue
+							}
+							if oldv, found := col.Items[newkey]; found {
+								updated = append(updated, funl.MakeListOfValues(req.frame, []funl.Value{oldv, newv}))
+							} else {
+								added = append(added, newv)
+							}
+						}
+					}
+
 					// to memory
 					col.Lock()
 					for k, v := range txn.newM {
@@ -501,6 +594,37 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 					col.InvalidateList()
 					col.Unlock()
 					col.latestSnapshot = nil
+
+					if col.hasListeners() {
+						event := funl.MakeListOfValues(req.frame, []funl.Value{
+							{Kind: funl.StringValue, Data: "transaction"},
+							funl.MakeListOfValues(req.frame, []funl.Value{
+								{Kind: funl.StringValue, Data: "added"},
+								funl.MakeListOfValues(req.frame, added),
+							}),
+							funl.MakeListOfValues(req.frame, []funl.Value{
+								{Kind: funl.StringValue, Data: "updated"},
+								funl.MakeListOfValues(req.frame, updated),
+							}),
+							funl.MakeListOfValues(req.frame, []funl.Value{
+								{Kind: funl.StringValue, Data: "deleted"},
+								funl.MakeListOfValues(req.frame, deleted),
+							}),
+						})
+						for _, listener := range col.listeners {
+							func() {
+								defer func() {
+									recover()
+								}()
+
+								funl.HandleCallOP(req.frame, []*funl.Item{
+									listener,
+									{Type: funl.ValueItem, Data: event},
+								})
+							}()
+						}
+					}
+
 				} else {
 					retv = funl.Value{Kind: funl.BoolValue, Data: false}
 				}
@@ -532,6 +656,7 @@ func newOpaqueCol(frame *funl.Frame, colName string, dbVal *OpaqueDB) *OpaqueCol
 		Db:             dbVal,
 		colName:        colName,
 		idCounter:      100,
+		listeners:      []*funl.Item{},
 	}
 	go col.Run(frame)
 	return col
@@ -540,14 +665,15 @@ func newOpaqueCol(frame *funl.Frame, colName string, dbVal *OpaqueDB) *OpaqueCol
 type reqType int
 
 const (
-	updateReq   = 1
-	putReq      = 2
-	takeReq     = 3
-	transReq    = 4
-	viewReq     = 5
-	delColReq   = 6
-	shutdownReq = 7
-	asListReq   = 8
+	updateReq      = 1
+	putReq         = 2
+	takeReq        = 3
+	transReq       = 4
+	viewReq        = 5
+	delColReq      = 6
+	shutdownReq    = 7
+	asListReq      = 8
+	addListenerReq = 9
 )
 
 type req struct {

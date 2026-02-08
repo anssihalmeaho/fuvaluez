@@ -564,6 +564,35 @@ func GetVZPutValue(name string) FZProc {
 	}
 }
 
+func GetVZAddListener(name string) FZProc {
+	return func(frame *funl.Frame, arguments []funl.Value) (retVal funl.Value) {
+		if l := len(arguments); l != 2 {
+			funl.RunTimeError2(frame, fmt.Sprintf("%s: wrong amount of arguments (%d)", name, l))
+		}
+		isTxn, col, txn := getColAndTxn(arguments[0])
+		if (col == nil) && (txn == nil) {
+			funl.RunTimeError2(frame, "invalid col")
+		}
+		if isTxn {
+			funl.RunTimeError2(frame, "not supported inside transaction")
+		}
+		if arguments[1].Kind != funl.FunctionValue {
+			funl.RunTimeError2(frame, "2nd argument should be func/proc")
+		}
+
+		replyCh := make(chan funl.Value)
+		request := &req{
+			reqType: addListenerReq,
+			reqData: arguments[1],
+			replyCh: replyCh,
+			frame:   frame,
+		}
+		col.ch <- *request
+		retVal = <-replyCh
+		return
+	}
+}
+
 func GetVZItems(name string) FZProc {
 	checkValidity := func(arguments []funl.Value) (bool, string) {
 		if l := len(arguments); l != 1 {
