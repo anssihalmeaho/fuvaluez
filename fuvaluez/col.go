@@ -70,6 +70,7 @@ type OpaqueTxn struct {
 	isReadTxn  bool
 	newM       map[string]funl.Value
 	newDeleted map[string]bool
+	newUPD     map[string]funl.Value
 	snapM      map[string]funl.Value
 	col        *OpaqueCol
 	AsList     *funl.Value
@@ -110,6 +111,7 @@ func newTxn(col *OpaqueCol, isReadTxn bool) *OpaqueTxn {
 		isReadTxn:  isReadTxn,
 		newM:       make(map[string]funl.Value),
 		newDeleted: make(map[string]bool),
+		newUPD:     make(map[string]funl.Value),
 		col:        col,
 	}
 	return txn
@@ -575,10 +577,16 @@ func (col *OpaqueCol) Run(frame *funl.Frame) {
 							if _, found := txn.newDeleted[newkey]; found {
 								continue
 							}
+							if _, found := col.Items[newkey]; !found {
+								added = append(added, newv)
+							}
+						}
+						for newkey, newv := range txn.newUPD {
+							if _, found := txn.newDeleted[newkey]; found {
+								continue
+							}
 							if oldv, found := col.Items[newkey]; found {
 								updated = append(updated, funl.MakeListOfValues(req.frame, []funl.Value{oldv, newv}))
-							} else {
-								added = append(added, newv)
 							}
 						}
 					}

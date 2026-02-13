@@ -548,6 +548,9 @@ valuez.items(<col/txn:opaque>) -> <list>
 ### Listening events of changes in value store
 Changes in collection can be listened by registering listener procedure.
 
+Event handler callback procedure is called during operation (not after operation)
+so event handler sees consistent view (operation is completed only after callbacks are called).
+
 ```
 valuez.add-listener(<col> <procedure>) -> bool
 ```

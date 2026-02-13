@@ -46,9 +46,9 @@ test-basic = proc()
 	call(valuez.take-values col func(x) in(list('b' 'c') x) end)
 
 	adds = list(
-        list('added' list('A'))
-        list('added' list('B'))
-        list('added' list('C'))
+		list('added' list('A'))
+		list('added' list('B'))
+		list('added' list('C'))
 	)
 	received-trace = call(trace)
 	#print(call(stdpp.form received-trace))
@@ -89,28 +89,41 @@ test-transaction = proc()
 	call(valuez.put-value col 'B')
 	call(valuez.put-value col 'C')
 	call(valuez.put-value col 'D')
+	call(valuez.put-value col 'X')
 	call(valuez.trans col proc(txn)
 		call(valuez.put-value txn 'E')
 		call(valuez.put-value txn 'F')
 		call(valuez.put-value txn 'G')
-		call(valuez.update txn func(x) list(true call(stdstr.lowercase x)) end)
-		call(valuez.take-values txn func(x) in(list('b' 'c' 'g') x) end)
+		call(valuez.update txn func(x)
+			if(in(list('A' 'G') x)
+				list(true call(stdstr.lowercase x))
+				list(false x)
+			)
+		end)
+		call(valuez.update txn func(x)
+			if(eq(x 'X')
+				list(true call(stdstr.lowercase x))
+				list(false x)
+			)
+		end)
+		call(valuez.take-values txn func(x) in(list('B' 'C' 'g') x) end)
 		true
 	end)
 
 	received-trace = call(trace)
 	#print(call(stdpp.form received-trace))
-	a1 a2 a3 a4 trans = received-trace:
+	a1 a2 a3 a4 a5 trans = received-trace:
 
 	# check additions
 	adds = list(
-        list('added' list('A'))
-        list('added' list('B'))
-        list('added' list('C'))
-        list('added' list('D'))
+		list('added' list('A'))
+		list('added' list('B'))
+		list('added' list('C'))
+		list('added' list('D'))
+		list('added' list('X'))
 	)
 	call(stddbc.assert
-		eq(list(a1 a2 a3 a4) adds)
+		eq(list(a1 a2 a3 a4 a5) adds)
 		sprintf('wrong trace: %v' call(stdpp.form received-trace))
 	)
 
@@ -121,14 +134,14 @@ test-transaction = proc()
 	addtag addlist = additions:
 	call(stddbc.assert eq(addtag 'added') sprintf('wrong add tag: %v' addtag))
 	call(stddbc.assert eq(len(addlist) 2) sprintf('wrong add list: %v' addlist))
-	call(stddbc.assert in(addlist 'e') sprintf('wrong add: %v' additions))
-	call(stddbc.assert in(addlist 'f') sprintf('wrong add: %v' additions))
+	call(stddbc.assert in(addlist 'E') sprintf('wrong add: %v' additions))
+	call(stddbc.assert in(addlist 'F') sprintf('wrong add: %v' additions))
 
 	updtag updlist = updates:
 	call(stddbc.assert eq(updtag 'updated') sprintf('wrong upd tag: %v' updtag))
 	call(stddbc.assert eq(len(updlist) 2) sprintf('wrong upd list: %v' updlist))
 	call(stddbc.assert in(updlist list('A' 'a')) sprintf('wrong update: %v' updates))
-	call(stddbc.assert in(updlist list('D' 'd')) sprintf('wrong update: %v' updates))
+	call(stddbc.assert in(updlist list('X' 'x')) sprintf('wrong update: %v' updates))
 
 	deltag dellist = deletions:
 	call(stddbc.assert eq(deltag 'deleted') sprintf('wrong del tag: %v' deltag))

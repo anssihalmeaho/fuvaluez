@@ -218,6 +218,7 @@ func GetVZUpdate(name string) FZProc {
 				Data: arguments[1],
 			}
 			newMap := make(map[string]funl.Value)
+			newUpd := make(map[string]funl.Value)
 			m := make(map[string]funl.Value)
 
 			txn.RLock()
@@ -249,6 +250,7 @@ func GetVZUpdate(name string) FZProc {
 				}
 				if doUpdate {
 					newMap[k] = newValue
+					newUpd[k] = newValue
 					isAnyUpdates = true
 				} else {
 					newMap[k] = v
@@ -258,6 +260,9 @@ func GetVZUpdate(name string) FZProc {
 				// now lock
 				txn.Lock()
 				txn.newM = newMap
+				for k, v := range newUpd {
+					txn.newUPD[k] = v
+				}
 				txn.InvalidateList()
 				txn.Unlock()
 			}
